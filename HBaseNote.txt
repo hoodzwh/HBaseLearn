@@ -1315,3 +1315,5 @@ $ hadoop jar target/hbase-book-ch07-1.0-job.jar ImportFromFile \
 -t testtable -i test-data.txt -c data:json
 第一个命令是 hadoop dfs -put,该命令将样本数据集合存储到hdfs 用户目录中，第二个命令则可以运行这个作业，作业的完成需要一段时间，使用默认的 TextInputFormat 类读取数据，这个类由 hadoop 及其 mapreduce 框架提供，这个输入格式能读取用换行符换行的文本文件。
 
+----注释
+there are no changes to commits
