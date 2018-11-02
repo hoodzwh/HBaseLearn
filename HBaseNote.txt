@@ -1313,7 +1313,24 @@ create 'testtable','data'
 $ hadoop dfs -put /projects/private/hbase-book-code/ch07/test-data.txt
 $ hadoop jar target/hbase-book-ch07-1.0-job.jar ImportFromFile \
 -t testtable -i test-data.txt -c data:json
-第一个命令是 hadoop dfs -put,该命令将样本数据集合存储到hdfs 用户目录中，第二个命令则可以运行这个作业，作业的完成需要一段时间，使用默认的 TextInputFormat 类读取数据，这个类由 hadoop 及其 mapreduce 框架提供，这个输入格式能读取用换行符换行的文本文件。
+第一个命令是 hadoop dfs -put,该命令将样本数据集合存储到hdfs 用户目录中，第二个命令则可以运行这个作业，作业的完成需要一段时间，使用默认的 TextInputFormat 类读取数据，这个类由 hadoop 及其 mapreduce 框架提供，这个输入格式能读取用换行符换行的文本文件。每读取一行都会调用一次指定的 mapper类的 map() 方法，这将处罚 ImportMapper.map() 函数
+ImportMapper 类定义了两个方法，这两个方法重载了父类 Mapper，方法名均相同。
+重载中存在的问题
+强烈推荐重载添加 @Override 注释，这样错误的标签在编译时会被检查出来，否则，隐式的 map() 与 reduce() 方法会被调用，并实现恒等功能。例如，以下 reduce() 方法：
+	public void reduce(Writable key,Iterator<Writable) values,
+	Context context) throws IOException,InterruptedException{}
+上述方法看起来正确，实则不然，其实并没有重载 Reducer 类的 reduce() 方法，而只是定义了 reduce() 方法的一个多态，MapReduce 框架会忽略这个方法，并执行由 Reducer 类提供的默认实现。
+究其原因，实际应该标记的方法时：
+	protected void reduce(KEYIN key,Iterable<VALUEIN> values,\
+	Context context) throws IOException,InterruptedException
+这是常见错误，在这里 Iterable 被错误地替换成了 Iteratore 类，在任务执行发生奇怪行为之前，在代码中重载的地方添加 @Override 注释能够帮助用户在编译的时候抛出错误（用户最），将注释添加到方法前面。
+Importmappe 类的重载的 setup() 方法只会在框架初始化该类时调用一次，在这个例子中，它主要被用于将指定的列信息解析为列族和列限定符。
+这个类的 map() 才是执行实际工作的实体，它会被输入的文本文件中的每一行调用，每一行都包含一个 jSON 格式的记录，这段代码会使用一行数据的 MD5 散列
+值来创建一个 hBase 行键，然后使用 HBase 提供的名为 data:json 的列存储一行的内容。
+这个例子通过 tableOutputFormat 类使用了隐式的写缓冲区，调用 context.write() 方法时，该方法内部会传入给定的 Put 实例并调用 table.put()，在作业结束前， TableOutputFormat 会主动调用flushCommits() 以保存仍驻留在写缓冲区的数据。
+map() 方法可以通过写 Put 实例来存储输入数据，用户也可以通过写 Delete 实例来删除目标表中的数据，这就是设置作业输出键的类型为 Writable 接口，而并非显示的 Put 类的原因，
+TableOutputFormat 当前仅能处理 Put 与 Delete 实例，将消息设置为除 Put 或 Delete 之外的实例都会导致抛出一个IOException 异常。
+由于数据时存储了排序表中的，并且每行数据都拥有唯一的行键，用户可以在流程中避免更消耗的 sort、shuffle 和 reduce 阶段。
 
-----注释
-there are no changes to commits
+7.2.3 数据源
+将数据导入到表中后，我们可以使用其中包含的数据来解析 JSON 记录，并从中提取信息，这里完全使用了 TableINputFormat 类，恰好对应了 TableOutputFormat。在 mapreduce 处理过程中，它以一张表为输入，使用了已提供的 InputFormat 类。
